@@ -1,0 +1,17 @@
+name: java-transaction-annotations
+filetype: (jsp$|java$)
+target: line
+type: regex
+defaultpattern: ^\s*@%s
+advice: Distributed transcations are problematic and should be remediated or use TKG
+effort: 5
+category: transaction
+defaultpattern: ^\s*@%s
+tags:
+- value: transaction
+patterns:
+- value: Remote
+- value: LocalHome
+- value: RemoteHome
+- value: TransactionManagement
+- value: TransactionAttribute

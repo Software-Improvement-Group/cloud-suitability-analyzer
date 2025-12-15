@@ -1,0 +1,15 @@
+name: java-security-annotations
+filetype: (jsp$|java$)
+target: line
+type: regex
+defaultpattern: ^\s*@%s
+advice: Replace with spring security org.springframework.security.access.annotation or move to TKG
+effort: 5
+category: security
+tags:
+  - value: security
+patterns:
+  - value: DeclareRoles
+  - value: DenyAll
+  - value: PermitAll
+  - value: RolesAllowed

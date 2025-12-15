@@ -1,0 +1,18 @@
+#SW
+name: bootJAXWS
+filetype: xml$
+target: line
+type: contains
+category: jaxws
+advice: Automatic remediation with Bootifier
+effort: 2
+readiness: 2
+tags:
+- value: jax-ws
+patterns:
+- value: jboss-annotations-api_1.3_spec
+  tag: jboss-annotations-1-3
+- value: jboss-servlet-api_4.0_spec
+  tag: jboss-servlet-4.0
+- value: javax.enterprise.concurrent-api
+  tag: javax-enterprise-concurrent

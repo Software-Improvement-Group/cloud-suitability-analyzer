@@ -1,0 +1,14 @@
+name: hard-coded-uri-config
+filetype: (yaml|yml|json|cs|java|vb|py|go)
+target: line
+type: contains
+advice: Found hard-coded URI. Make configurable, put into environment or config map
+effort: 3
+readiness: 8
+category: env-config
+tags:
+- value: hardcoded-uri
+patterns:
+- value: http://
+- value: https://
+#review

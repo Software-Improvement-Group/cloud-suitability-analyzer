@@ -1,0 +1,15 @@
+#SW
+name: xml-servlet-2-5
+filetype: xml$
+target: line
+type: contains
+category: servlet
+advice: Refer to platform documentation
+effort: 400
+readiness: 500
+tags:
+- value: servlet
+- value: web-container
+patterns:
+- value: web-app_2_5.xsd
+##web-app_2_5.xsd

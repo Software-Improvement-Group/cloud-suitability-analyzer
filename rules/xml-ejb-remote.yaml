@@ -1,0 +1,16 @@
+name: xml-ejb-remote
+filetype: xml$
+target: line
+type: contains
+category: ejb
+advice: Refer to platform documentation
+effort: 100
+readiness: 100
+tags:
+- value: remote-ejb
+- value: ejb
+- value: javaee
+- value: full-profile
+patterns:
+- value: <remote>
+##<remote>
