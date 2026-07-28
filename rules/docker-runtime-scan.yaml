@@ -1,0 +1,15 @@
+name: docker-runtime-scan
+filetype: csa-images$
+target: file
+type: plugin
+category: dockerSecurity
+advice: Runtime container scan (root user, read-only rootfs, filesystem writes)
+recipes:
+effort: 0
+readiness: 0
+tags:
+  - value: container-runtime
+  - value: docker
+  - value: security
+patterns:
+  - command: csa-container-scan

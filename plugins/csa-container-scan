@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# CSA plugin: pre-deployment container runtime scanner.
+#
+# Contract (csa-app/csa/FileProccesor.go RunPlugin): invoked as
+#   plugins/csa-container-scan <file>
+# where <file> is file.FQN — a text file containing one image reference
+# per line. Emits one JSON model.Finding object per line on stdout,
+# consumed by a streaming json.Decoder (concatenated JSON values, not
+# an array). Diagnostics go to stderr only.
+#
+# Never touches a real Helm release / kustomization / cluster — every
+# probe runs an ephemeral, network-disabled container that is removed
+# immediately after.
+set -uo pipefail
+
+FILE="${1:?usage: csa-container-scan <file-listing-image-refs>}"
+
+finding() {
+  local image="$1" rule="$2" value="$3" advice="$4" criticality="$5"
+  python3 - "$image" "$rule" "$value" "$advice" "$criticality" "$FILE" <<'PYEOF'
+import json, sys
+image, rule, value, advice, crit, fqn = sys.argv[1:7]
+print(json.dumps({
+    "Filename": image,
+    "Fqn": fqn,
+    "Rule": rule,
+    "Value": value,
+    "Advice": advice,
+    "Criticality": crit,
+    "Category": "container-runtime",
+    "Effort": 100 if crit == "high" else 30,
+}), flush=True)
+PYEOF
+}
+
+scan_image() {
+  local image="$1"
+  local name="csa-scan-$$-${RANDOM}"
+  trap 'docker rm -f "$name" >/dev/null 2>&1' RETURN
+
+  docker pull -q "$image" >/dev/null 2>&1
+
+  # 1. Effective runtime UID via docker top (works without a shell in
+  #    the image, e.g. distroless). -eo needs uid+pid together or the
+  #    daemon's ps-field parser errors out.
+  docker run -d --name "$name" --network none "$image" >/dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    sleep 1
+    local run_uid
+    run_uid=$(docker top "$name" -eo uid,pid 2>/dev/null | tail -n +2 | head -1 | awk '{print $1}')
+    docker rm -f "$name" >/dev/null 2>&1
+    if [ "$run_uid" = "0" ]; then
+      finding "$image" "runs-as-root" "uid=0" \
+        "Container runs as root. Set USER (Dockerfile) or securityContext.runAsNonRoot (K8s) before this ships." "high"
+    elif [ -z "$run_uid" ]; then
+      fmt_note="uid=unknown (no long-running process sampled — job-style image or exited immediately)"
+      finding "$image" "runs-as-root-unverified" "$fmt_note" \
+        "Could not confirm effective runtime UID; verify manually — image may not run a foreground process." "medium"
+    fi
+  else
+    fmt_note="image did not start standalone (missing CMD/ENTRYPOINT, e.g. bare distroless base) — cannot probe runtime behavior"
+    finding "$image" "scan-inconclusive" "$fmt_note" \
+      "This image cannot run without an application layered on top; scan the derived application image instead." "low"
+    return
+  fi
+
+  # 2. Read-only rootfs feasibility.
+  docker run -d --name "$name" --network none --read-only --tmpfs /tmp "$image" >/dev/null 2>&1
+  sleep 2
+  local status exitcode
+  status=$(docker inspect -f '{{.State.Status}}' "$name" 2>/dev/null)
+  exitcode=$(docker inspect -f '{{.State.ExitCode}}' "$name" 2>/dev/null)
+  if [ "$status" != "running" ] && [ "${exitcode:-1}" != "0" ]; then
+    finding "$image" "requires-rw-rootfs" "exit=${exitcode}" \
+      "Container failed to start with a read-only root filesystem; it likely writes to paths under /. Set readOnlyRootFilesystem: false or mount emptyDir volumes for the paths it needs." "high"
+  fi
+  docker rm -f "$name" >/dev/null 2>&1
+
+  # 3. Runtime-written paths via filesystem diff against a normal (writable) run.
+  docker run -d --name "$name" --network none "$image" >/dev/null 2>&1
+  sleep 3
+  docker diff "$name" 2>/dev/null | awk '$1=="A" || $1=="C" {print $2}' | while read -r path; do
+    finding "$image" "runtime-write-path" "$path" \
+      "Path written at runtime: $path. Mount as an emptyDir/PVC volume rather than relying on writable rootfs." "medium"
+  done
+  docker rm -f "$name" >/dev/null 2>&1
+}
+
+while IFS= read -r image || [ -n "$image" ]; do
+  [ -z "$image" ] && continue
+  [[ "$image" =~ ^# ]] && continue
+  scan_image "$image"
+done < "$FILE"
